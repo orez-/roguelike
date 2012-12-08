@@ -1,12 +1,14 @@
 #!/usr/bin/python
 
 from __future__ import print_function
-from math import atan2, pi, cos, sin, copysign
-from get_key import getch
 import os
+import random
+from math import atan2, pi, cos, sin, copysign
+
+from get_key import getch
 from los import Visibility
 
-wall_lookup = [u"\u25A0",   # 
+wall_lookup = [u"\u25AF",   # 
                u"\u2502",   # ^
                u"\u2500",   #  >
                u"\u2514",   # ^>
@@ -23,104 +25,64 @@ wall_lookup = [u"\u25A0",   #
                u"\u252C",   #  >v<
                u"\u253C"]   # ^>v<
 
-raw_map = [[1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0],
-           [1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0],
-           [1, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 0],
-           [1, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 1],
-           [1, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-           [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-           [1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1],
-           [0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 1, 1, 1, 0],
-           [0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0]]
+# raw_map = [[1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0],
+#            [1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0],
+#            [1, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 0],
+#            [1, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 1],
+#            [1, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+#            [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+#            [1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1],
+#            [0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 1, 1, 1, 0],
+#            [0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0]]
+
+raw_map = []
+
+def get_at(x, y, default=0):
+    if 0 <= y < len(raw_map) and 0 <= x < len(raw_map[y]):
+        return raw_map[y][x]
+    return default
+
+def get_wallcount_diag(x, y):
+    x -= 1
+    y -= 1
+    return sum([get_at(x + i % 3, y + i // 3, 1) for i in xrange(9) if i != 4])
+
+def get_wallcount(x, y):
+    mysum = (get_wallcount_diag(x, y - 1) != 8) and (get_at(x, y - 1))
+    mysum += ((get_wallcount_diag(x + 1, y) != 8) and (get_at(x + 1, y) * 2))
+    mysum += ((get_wallcount_diag(x, y + 1) != 8) and (get_at(x, y + 1) * 4))
+    mysum += ((get_wallcount_diag(x - 1, y) != 8) and (get_at(x - 1, y) * 8))
+    return mysum
+
+def get_walltile(x, y):
+    if raw_map[y][x] == 0:
+        return u"\u2592"
+    return wall_lookup[get_wallcount(x, y)]
+
+def gen_map():
+    global raw_map
+    width = 79
+    height = 23
+    raw_map = [[int(random.random() < .45) for x in xrange(width - 2)] for y in xrange(height - 2)]
+    temp = [[0 for _ in row] for row in raw_map]
+
+    for _ in xrange(5):
+        for x in xrange(width - 2):
+            for y in xrange(height - 2):  # a tile becomes a wall if it was a wall and 4 or
+                # more of its nine neighbors were walls, or if it was not a
+                # wall and 5 or more neighbors were
+                temp[y][x] = ((5 - get_at(x, y)) <= get_wallcount_diag(x, y))
+        raw_map = temp
+        temp = [[0 for _ in row] for row in raw_map]
+
+
+    for row in raw_map:
+        row[:] = [1] + row + [1]
+    raw_map = [[1] * width] + raw_map + [[1] * width]
+
+gen_map()
 
 vis_map = [[0 for _ in row] for row in raw_map]
-
-# class Frustum(object):
-#     def __init__(self, x, y, start=0, end=pi * 2):
-#         self.x, self.y = int(x) + .5, int(y) + .5
-#         self.start = start
-#         self.end = end
-
-#     @staticmethod
-#     def get_square_at_angle(r, angle):
-#         x, y = map(lambda q: (q + (2 * pi)) % (2 * pi), (cos(angle), sin(angle)))
-#         if abs(x) > abs(y):
-#             sx = copysign(r, x)
-#             sy = y * abs(r / x)
-#         else:
-#             sx = x * abs(r / y)
-#             sy = copysign(r, y)
-#         return map(int, (sx, sy))
-
-#     def get_squares(self, r):
-#         sx, sy = self.get_square_at_angle(r, self.start)
-#         ex, ey = self.get_square_at_angle(r, self.end)
-#         if (sx, sy) == (ex, ey):
-#             skip = True
-#             lst = []
-#         else:
-#             lst = [(sx, sy)]
-#             skip = False
-#         while skip or (sx, sy) != (ex, ey):
-#             skip = False
-#             if sx == r and sy != r:
-#                 sy += 1
-#             elif sy == r and sx != -r:
-#                 sx -= 1
-#             elif sx == -r and sy != -r:
-#                 sy -= 1
-#             elif sy == -r and sx != r:
-#                 sx += 1
-#             lst.append((sx, sy))
-#         return map(lambda (x, y): (int(x + self.x - .5), int(y + self.y - .5)), lst)
-
-#     def angle(self):
-#         return self.end - self.start
-
-#     # only works if square is in frustum
-#     def clip(self, x, y):
-#         maxang = None
-#         minang = None
-#         one = None
-#         two = None
-#         for dx, dy in ((0, 0), (1, 0), (0, 1), (1, 1)):
-#             dx += x - self.x
-#             dy += y - self.y
-#             angle = (atan2(dy, dx) + (2 * pi)) % (2 * pi)
-#             maxang = max(angle, maxang)
-#             minang = min(angle, minang)
-
-#         if minang > self.start:  # something worth keeping before the first edge
-#             one = Frustum(self.x, self.y, self.start, minang)
-#         if maxang < self.end:  # something worth keeping past the farther edge
-#             self.start = maxang
-#             two = self  # has to be self: we may need to divide further.
-#         return filter(lambda q: q and q.angle() > .002, [one, two])
-
-
-# def compute_visibility(x, y):
-#     vis_map[:] = [[bool(e) for e in row] for row in vis_map]
-#     frustums = [Frustum(x, y)]
-#     i = 1
-#     vis_map[y][x] = 1
-#     did_stuff = True  # in an enclosed system this ought to be optional.
-#     while did_stuff and frustums:  # still have something to look at.
-#         did_stuff = False
-#         new_frustums = []
-#         for f in frustums:
-#             for (sx, sy) in f.get_squares(i):
-#                 if 0 <= sy < len(vis_map) and 0 <= sx < len(vis_map[sy]):
-#                     did_stuff = True
-#                     vis_map[sy][sx] = 2  # can see either way
-#                     if not raw_map[sy][sx]:  # not solid: time to block
-#                         nf = f.clip(sx, sy)
-#                         new_frustums += nf
-#                         if f not in nf:
-#                             break
-#                     else:  # keep on truckin
-#                         new_frustums.append(f)
-#         # frustums = new_frustums
-#         i += 1
 
 def clear_visibility():
     global vis_map
@@ -132,19 +94,7 @@ def color(text, color):
 def clear():
     os.system( [ 'clear', 'cls' ][ os.name == 'nt' ] )
 
-def get_wallcount(x, y):
-    if raw_map[y][x] == 0:
-        return u"\u2592"
-    mysum = get_at(x, y - 1)
-    mysum += get_at(x + 1, y) * 2
-    mysum += get_at(x, y + 1) * 4
-    mysum += get_at(x - 1, y) * 8
-    return wall_lookup[mysum]
-
-def get_at(x, y):
-    return 0 <= y < len(raw_map) and 0 <= x < len(raw_map[y]) and raw_map[y][x]
-
-my_map = [[get_wallcount(x, y) for x, elem in enumerate(row)]
+my_map = [[get_walltile(x, y) for x, elem in enumerate(row)]
             for y, row in enumerate(raw_map)]
 
 def set_visible(x, y):
@@ -164,13 +114,13 @@ def redraw():
                 elem = color("@", 94)
             elif vis_map[y][x]:
                 if vis_map[y][x] == 1:
-                   elem = color(elem, 90)
+                    elem = color(elem, 90)  # 30
+                # elif abs(dude.x - x) + abs(dude.y - y) > 10:
+                #     elem = color(elem, 90)
             else:
+                #elem = color(elem, 95)
                 elem = " "
-            # else:
             print(elem, end="")
-            # else:
-            #    print(" ", end="")
         print(end="\n")
 
 class Dude(object):
@@ -195,7 +145,14 @@ class Dude(object):
 
 
 visibility = Visibility(oob, is_solid, clear_visibility, set_visible)
-dude = Dude(1, 1)
+
+def place_dude_free():
+    for y in xrange(len(raw_map)):
+        for x in xrange(len(raw_map[y])):
+            if not raw_map[y][x]:
+                return Dude(x, y)
+
+dude = place_dude_free()
 
 key = 0
 while key != u"\u0003":
