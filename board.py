@@ -60,11 +60,13 @@ class Board(object):
         return default
 
     def get_wallcount_diag(self, x, y):
+        """ Get the number of walls surrounding you in 8 directions """
         x -= 1
         y -= 1
         return sum([self.get_at(x + i % 3, y + i // 3, 1) for i in xrange(9) if i != 4])
 
     def get_wallcount(self, x, y):
+        """ Get the unique id of walls surrounding you in 4 directions """
         mysum = (self.get_wallcount_diag(x, y - 1) != 8) and (self.get_at(x, y - 1))
         mysum += ((self.get_wallcount_diag(x + 1, y) != 8) and (self.get_at(x + 1, y) * 2))
         mysum += ((self.get_wallcount_diag(x, y + 1) != 8) and (self.get_at(x, y + 1) * 4))
@@ -73,10 +75,12 @@ class Board(object):
 
     def gen_map(self):
         """ http://roguebasin.roguelikedevelopment.org/index.php?title=Cellular_Automata_Method_for_Generating_Random_Cave-Like_Levels """
-        self.raw_map = [[int(random.random() < .45) for x in xrange(width - 2)] for y in xrange(height - 2)]
+        WALL_CHANCE = .45
+        ITERATION = 5
+        self.raw_map = [[int(random.random() < WALL_CHANCE) for x in xrange(width - 2)] for y in xrange(height - 2)]
         temp = [[0 for _ in row] for row in self.raw_map]
 
-        for _ in xrange(5):
+        for _ in xrange(ITERATION):
             for x in xrange(width - 2):
                 for y in xrange(height - 2):  # a tile becomes a wall if it was a wall and 4 or
                     # more of its nine neighbors were walls, or if it was not a
@@ -85,7 +89,6 @@ class Board(object):
             self.raw_map = temp
             temp = [[0 for _ in row] for row in self.raw_map]
 
-
-        for row in self.raw_map:
+        for row in self.raw_map:  # bookends
             row[:] = [1] + row + [1]
         self.raw_map = [[1] * width] + self.raw_map + [[1] * width]

@@ -8,16 +8,6 @@ from get_key import getch
 from los import Visibility
 from board import Board
 
-# raw_map = [[1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0],
-#            [1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0],
-#            [1, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 0],
-#            [1, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 1],
-#            [1, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-#            [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-#            [1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1],
-#            [0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 1, 1, 1, 0],
-#            [0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0]]
-
 board = Board()
 
 def color(text, color):
@@ -35,10 +25,7 @@ def redraw():
             elif board.vis_map[y][x]:
                 if board.vis_map[y][x] == 1:
                     elem = color(elem, 90)  # 30
-                # elif abs(dude.x - x) + abs(dude.y - y) > 10:
-                #     elem = color(elem, 90)
             else:
-                #elem = color(elem, 95)
                 elem = color(" ", 30)
             print(elem, end="")
         print(end="\n")
@@ -67,6 +54,7 @@ class Dude(object):
 visibility = Visibility(board)
 
 def place_dude_free():
+    """ Place the dude in the first open space """
     for y in xrange(board.height()):
         for x in xrange(board.width()):
             if not board.is_solid(x, y):
