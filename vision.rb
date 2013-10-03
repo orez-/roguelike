@@ -11,9 +11,11 @@ module Vision
   end
 
   class Visibility
-    def initialize cave
-      @cave = cave
-      @vis_map = (0...cave.height).collect{(0...cave.width).collect{0}}
+    def initialize world, lighter=nil
+      @lighter = lighter || world
+      @world = world
+      @cave = world.cave
+      @vis_map = (0...@cave.height).collect{(0...@cave.width).collect{0}}
     end
 
     def visible? x, y
@@ -39,7 +41,7 @@ module Vision
     def compute_visibility(viewer_x, viewer_y)
       clear_visibility
       PORTALS.each do |i|
-        self.compute_visibility2(viewer_x, viewer_y, viewer_x, viewer_y, *(i[0...4]))
+        self.compute_visibility2(viewer_x, viewer_y, viewer_x, viewer_y, *(i[0...4]), @lighter.luminescence || -1)
       end
 
       # POSTPROCESSING #
@@ -58,12 +60,9 @@ module Vision
       # @vis_map = temp
     end
 
-    def compute_visibility2(viewer_x, viewer_y, target_x, target_y, ldx, ldy, rdx, rdy, countdown=5)
-      return if (@cave.oob(target_x, target_y))
-      return if countdown <= 0
-      
-      set_visible(target_x, target_y)
-
+    def compute_visibility2(viewer_x, viewer_y, target_x, target_y, ldx, ldy, rdx, rdy, cutoff=-1)
+      return if (@cave.oob(target_x, target_y) || cutoff == 0)
+      set_visible(target_x, target_y) if (cutoff > 0) || (@world.lights? target_x, target_y)
       return if (@cave.solid?(target_x, target_y))
 
       dx = 2 * (target_x - viewer_x)
@@ -91,7 +90,7 @@ module Vision
         end
 
         if Vision::a_right_of_b(crdx, crdy, cldx, cldy)
-          compute_visibility2(viewer_x, viewer_y, target_x + i[4], target_y + i[5], cldx, cldy, crdx, crdy, countdown - 1)
+          compute_visibility2(viewer_x, viewer_y, target_x + i[4], target_y + i[5], cldx, cldy, crdx, crdy, cutoff - 1)
         end
       end
     end
