@@ -1,6 +1,6 @@
 # http://playtechs.blogspot.ca/2007/03/2d-portal-visibility-part-1.html
 
-module Vision
+module Optics
   PORTALS = [[   1,  1,   1, -1,   1,  0 ],
              [  -1,  1,   1,  1,   0,  1 ],
              [  -1, -1,  -1,  1,  -1,  0 ],
@@ -10,7 +10,11 @@ module Vision
     ax * by > ay * bx
   end
 
-  class Visibility
+  class Vision
+    @may_cutoff = false
+    class << self
+      attr_reader :may_cutoff
+    end
     def initialize world, lighter=nil
       @lighter = lighter || world
       @world = world
@@ -34,35 +38,25 @@ module Vision
       @vis_map.each{|row| row.collect!{|elem| elem >= 1 ? 1 : 0}}  # normalize
     end
 
-    def seen_all
+    def remember_all
       @vis_map.each{|row| row.collect!{|elem| elem < 1 ? 1: elem}}  # see all
     end
 
-    def compute_visibility(viewer_x, viewer_y)
+    def forget_all
+      @vis_map.each{|row| row.collect!{|elem| elem == 1 ? 0: elem}}
+    end
+
+    def compute_visibility(viewer_x, viewer_y, cutoff=-1)
       clear_visibility
       PORTALS.each do |i|
-        self.compute_visibility2(viewer_x, viewer_y, viewer_x, viewer_y, *(i[0...4]), @lighter.luminescence || -1)
+        self.compute_visibility2(viewer_x, viewer_y, viewer_x, viewer_y, *(i[0...4]), cutoff)
       end
-
-      # POSTPROCESSING #
-      # temp = @vis_map.collect{|row| row.collect{|elem| elem}}  # gotta edit the temp, don't want to propagate this
-      # @vis_map[0...-1].each_with_index do |row, y|
-      #   row[0...-1].each_with_index do |elem, x|
-      #     [[0, 0, 1, 0], [1, 0, 1, 1], [1, 1, 0, 1], [0, 1, 0, 0]].each do |wx, wy, cx, cy|
-      #       if [[x + wx, y + wy], [x + (wx ^ 1), y + (wy ^ 1)],
-      #           [x + cx, y + cy], [x + (cx ^ 1), y + (cy ^ 1)]].all?{
-      #           |ox, oy| @cave.solid?(ox, oy) && visible?(ox, oy)}
-      #         temp[y + (cy ^ 1)][x + (cx ^ 1)] = 2  # the literal corner case: all sides are visible but the corner cannot
-      #       end
-      #     end
-      #   end
-      # end
-      # @vis_map = temp
     end
 
     def compute_visibility2(viewer_x, viewer_y, target_x, target_y, ldx, ldy, rdx, rdy, cutoff=-1)
-      return if (@cave.oob(target_x, target_y) || cutoff == 0)
-      set_visible(target_x, target_y) if (cutoff > 0) || (@world.lights? target_x, target_y)
+      return if (@cave.oob(target_x, target_y))
+      return if cutoff <= 0 && self.class.may_cutoff
+      set_visible(target_x, target_y) if ((cutoff > 0) || @world.lights?(target_x, target_y))
       return if (@cave.solid?(target_x, target_y))
 
       dx = 2 * (target_x - viewer_x)
@@ -74,14 +68,14 @@ module Vision
         prdx = dx + i[2]
         prdy = dy + i[3]
 
-        if Vision::a_right_of_b(ldx, ldy, pldx, pldy)
+        if Optics::a_right_of_b(ldx, ldy, pldx, pldy)
           cldx = ldx
           cldy = ldy
         else
           cldx = pldx
           cldy = pldy
         end
-        if Vision::a_right_of_b(rdx, rdy, prdx, prdy)
+        if Optics::a_right_of_b(rdx, rdy, prdx, prdy)
           crdx = prdx
           crdy = prdy
         else
@@ -89,10 +83,15 @@ module Vision
           crdy = rdy
         end
 
-        if Vision::a_right_of_b(crdx, crdy, cldx, cldy)
+        if Optics::a_right_of_b(crdx, crdy, cldx, cldy)
           compute_visibility2(viewer_x, viewer_y, target_x + i[4], target_y + i[5], cldx, cldy, crdx, crdy, cutoff - 1)
         end
       end
     end
+  end
+
+
+  class Light < Vision
+    @may_cutoff = true  # light doesn't need to check farther than it projects
   end
 end
