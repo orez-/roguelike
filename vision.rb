@@ -15,11 +15,14 @@ module Optics
     class << self
       attr_reader :may_cutoff
     end
-    def initialize world, lighter=nil
-      @lighter = lighter || world
-      @world = world
-      @cave = world.cave
+    def initialize floor
+      self.floor = floor
       @vis_map = (0...@cave.height).collect{(0...@cave.width).collect{0}}
+    end
+
+    def floor= new_floor
+      @floor = new_floor
+      @cave = @floor.cave
     end
 
     def visible? x, y
@@ -56,7 +59,7 @@ module Optics
     def compute_visibility2(viewer_x, viewer_y, target_x, target_y, ldx, ldy, rdx, rdy, cutoff=-1)
       return if (@cave.oob(target_x, target_y))
       return if cutoff <= 0 && self.class.may_cutoff
-      set_visible(target_x, target_y) if ((cutoff > 0) || @world.lights?(target_x, target_y))
+      set_visible(target_x, target_y) if ((cutoff > 0) || @floor.lights?(target_x, target_y))
       return if (@cave.solid?(target_x, target_y))
 
       dx = 2 * (target_x - viewer_x)
