@@ -43,6 +43,11 @@ class Item
     @lum.compute_visibility @x, @y, @luminescence
   end
 
+  # return the x coordinate, the y coordinate, and the current floor
+  def location
+    [@x, @y, @floor]
+  end
+
   # Returns true if this Item casts light on the given square
   def lights? x, y
     @lum.visible? x, y
@@ -125,6 +130,10 @@ class World
     item = entity.floor.remove_item entity.x, entity.y, item
     entity.give_item item unless item.nil?
     item
+  end
+
+  def add_item item
+    item.floor.add_item item
   end
 
   def to_s
@@ -229,6 +238,6 @@ while str.chr != "\u0003"
   world.dude.vis.forget_all if str.chr == "p"
   world.pick_up if str.chr == ","
   world.dude.drop_item if str.chr == "."
-  world.add_item Item.new(world.dude.x, world.dude.y, world, ItemData::TORCH) if str.chr == "l"
+  world.add_item Item.new(*world.dude.location, ItemData::TORCH) if str.chr == "l"
   world.tick
 end
