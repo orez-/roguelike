@@ -28,7 +28,7 @@ class Item
     @floor = floor
     @default = self.class.default.merge item_data.merge extra_data  # Take values from extra, then data, then default
     @default.each do |key, value|
-      raise "'#{key}' must be defined for '#{@default[:name]}'" if value.nil?
+      raise "'#{key}' must be defined for '#{@default[:name]}'" if value.nil? && !(extra_data.has_key? key)
       instance_variable_set "@#{key}", value
     end
     @lum = Optics::Light.new floor
