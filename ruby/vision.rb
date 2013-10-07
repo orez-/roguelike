@@ -21,8 +21,13 @@ module Optics
     end
 
     def floor= new_floor
-      @floor = new_floor
-      @cave = @floor.cave
+      if new_floor.nil?
+        @floor = nil
+        @cave = nil
+      else
+        @floor = new_floor
+        @cave = @floor.cave
+      end
     end
 
     def visible? x, y
@@ -46,7 +51,7 @@ module Optics
     end
 
     def forget_all
-      @vis_map.each{|row| row.collect!{|elem| elem == 1 ? 0: elem}}
+      @vis_map.each{|row| row.collect!{0}}
     end
 
     def compute_visibility(viewer_x, viewer_y, cutoff=-1)

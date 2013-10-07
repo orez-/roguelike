@@ -1,5 +1,6 @@
 # http://roguebasin.roguelikedevelopment.org/index.php?title=Cellular_Automata_Method_for_Generating_Random_Cave-Like_Levels
 module CaveLib
+  EMPTY = [0, []]
   STRAT1 = [0.45, [[5, lambda {|s, x, y| s.wallcount?(x, y) >= 5}]]]
   STRAT2 = [0.45, [[5, lambda {|s, x, y| s.wallcount?(x, y) >= 5 ||
                                          s.wallcount?(x, y) == 0}]]]
