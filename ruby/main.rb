@@ -12,6 +12,25 @@ def color text, color=nil
 end
 
 
+class Inventory
+  def initialize
+    @weight = 0
+    @items = []
+  end
+
+  def add_item item
+    @weight += item.weight
+    @items << item
+  end
+
+  def remove_item item
+    deleted = @items.delete item
+    @weight -= item.weight unless deleted.nil?
+    deleted
+  end
+end
+
+
 class Item
   @default = ItemData::DEFAULT
   class << self
@@ -66,6 +85,15 @@ class Item
     @lum.visible? x, y
   end
 
+  def property? symb
+    return @luminescence > 0 if symb == P::BRIGHT
+    @properties.include? symb
+  end
+
+  def to_s
+    name
+  end
+
   private :floor=
 end
 
@@ -75,9 +103,11 @@ class Entity < Item
   attr_reader :vis
   attr_reader :nightvision
   attr_reader :equipment
+  attr_reader :wants
   def initialize x, y, floor, entity_data, extra_data={}
     super x, y, floor, entity_data, extra_data
     @vis = Optics::Vision.new floor
+    @inv = Inventory.new
   end
 
   def luminescence= new_val
@@ -103,6 +133,18 @@ class Entity < Item
     end
   end
 
+  def offer_item receiver
+    # TODO: don't use $world, make a singleton or SOMETHING.
+    return nil if distance_to(receiver) > 1 || receiver.floor != self.floor
+    if receiver.wants.match? @equipment
+      $world.queue_msg "\"Thanks! This #{@equipment} is just what I needed.\""
+    elsif @equipment.nil?
+      $world.queue_msg '"Hey, can you get me something made of iron that is not a weapon?"'
+    else
+      $world.queue_msg "\"No thanks, I'm not looking for that #{@equipment}\""
+    end
+  end
+
   # Take an item, drop the one you had.
   # Don't give nil to drop an item, use drop_item instead
   def give_item item
@@ -115,7 +157,7 @@ class Entity < Item
   def move kwargs
     nx = @x + (kwargs[:x] || 0)
     ny = @y + (kwargs[:y] || 0)
-    unless @floor.cave.solid? nx, ny
+    unless @floor.impassable? nx, ny
       move_to nx, ny
       return true
     end
@@ -240,6 +282,7 @@ class World
     @dude = Entity.new *trap_loc, EntityData::DUDE
     add_entity @dude
     @dude.floor.recompute_visibilities
+    @msg = []
   end
 
   def take_stairs entity, direction=(UP | DOWN)
@@ -254,6 +297,16 @@ class World
     x, y, _ = *stairs.destination
     new_floor.add_entity entity
     entity.move_to x, y, new_floor
+  end
+
+  def queue_msg msg
+    @msg << msg
+    nil
+  end
+
+  def dequeue_msg
+    return " " if @msg.empty?
+    @msg.shift
   end
 
   def tick
@@ -281,32 +334,6 @@ class World
   def tear_down
     FileUtils.rm_rf('saves/temp')
   end
-
-  def to_s
-    toS = ""
-    floor = @dude.floor
-    floor.cave.raw_map.each_with_index do |row, y|
-      row.each_with_index do |elem, x|
-        if @dude.vis.seen? x, y  # I've seen it before (or right now)
-          symb = elem ? "#" : "."
-          if @dude.vis.visible? x, y  # I see it right now
-            symb, clr = ((floor.symb_at x, y) || [symb, 93])  # get the entity or item
-            if floor.lights?(x, y)  # lit up
-              toS << color(symb, clr)
-            else  # nightvison
-              toS << color(symb, 90)
-            end
-          else
-            toS << color(symb, 30)  # memory
-          end
-        else
-          toS << color(" ", 30)  # yet unseen
-        end
-      end
-      toS << "\n"
-    end
-    toS
-  end
 end
 
 
@@ -318,15 +345,36 @@ class Floor
     @basement_num = bnum.to_i
     @parallel_num = pnum.to_i
     @cave = CaveLib::Cave.new CaveLib::STRAT3
-    @items = [Item.new(*@cave.open_spot, self, ItemData::TORCH)]
-    @entities = []
+    bs_spot = @cave.open_spot
+
+    @entities = [Entity.new(*bs_spot, self, EntityData::BLACKSMITH)]
+    @items = [
+      Item.new(*@cave.open_spot, self, ItemData::TORCH),
+      Item.new(*open_spot(near: bs_spot), ItemData::TEAPOT),
+      Item.new(*open_spot(near: bs_spot), ItemData::SWORD)
+    ]
     @traps = []
     recompute_visibilities
   end
 
-  def open_spot
-    x, y = @cave.open_spot
-    [x, y, self]
+  def impassable? x, y
+    (@cave.solid? x, y) || @entities.find {|e| [e.x, e.y] == [x, y]}
+  end
+
+  def open_spot kwargs={}
+    loc = kwargs[:near]
+    if loc.nil?
+      x, y = @cave.open_spot
+      [x, y, self]
+    else
+      x, y = loc
+      (-1..1).each do |ox|
+        (-1..1).each do |oy|
+          return [x + ox, y + oy, self] unless impassable? x + ox, y + oy
+        end
+      end
+      return nil
+    end
   end
 
   def recompute_visibilities
@@ -370,6 +418,10 @@ class Floor
     @traps.find &block
   end
 
+  def entity_at x, y
+    @entities.find {|entity| entity.x == x && entity.y == y}
+  end
+
   def symb_at x, y
     [@entities, @items, @traps].each do |iterable|
       element = iterable.find {|element| element.distance_to(x, y) == 0}
@@ -394,29 +446,78 @@ class Floor
 end
 
 
+class GameView
+  def self.view world
+    toS = ""
+    dude = world.dude
+    floor = dude.floor
+    toS << world.dequeue_msg << "\n"
+    floor.cave.raw_map.each_with_index do |row, y|
+      row.each_with_index do |elem, x|
+        if dude.vis.seen? x, y  # I've seen it before (or right now)
+          symb = elem ? "#" : "."
+          if dude.vis.visible? x, y  # I see it right now
+            symb, clr = ((floor.symb_at x, y) || [symb, 93])  # get the entity or item
+            if floor.lights?(x, y)  # lit up
+              toS << color(symb, clr)
+            else  # nightvison
+              toS << color(symb, 90)
+            end
+          else
+            toS << color(symb, 30)  # memory
+          end
+        else
+          toS << color(" ", 30)  # yet unseen
+        end
+      end
+      toS << "\n"
+    end
+    10.times do |n|
+      toS << "[     #{n.to_s[-1]}]"
+    end
+    toS
+  end
+end
+
+
 if __FILE__ == $0
-  world = World.new
+  $world = World.new
+  world = $world
   str = ""
+  talk = false
 
   while str.chr != "\u0003"
-    puts world.to_s
+    puts GameView.view world
     begin
       system("stty raw -echo")
       str = STDIN.getc
     ensure
       system("stty -raw echo")
     end
-    world.dude.move(y: -1) if str.chr == "w"
-    world.dude.move(x: -1) if str.chr == "a"
-    world.dude.move(y: 1) if str.chr == "s"
-    world.dude.move(x: 1) if str.chr == "d"
-    world.dude.vis.remember_all if str.chr == "o"
-    world.dude.vis.forget_all if str.chr == "p"
-    world.pick_up if str.chr == ","
-    world.dude.drop_item if str.chr == "."
-    world.take_stairs world.dude, UP if str.chr == "<"
-    world.take_stairs world.dude, DOWN if str.chr == ">"
-    world.add_item Item.new(*world.dude.location, ItemData::TORCH) if str.chr == "l"
+    if talk
+      *loc, _ = world.dude.location
+      if 'wasd'.include? str.chr
+        loc[1] -= 1 if str.chr == "w"
+        loc[0] -= 1 if str.chr == "a"
+        loc[1] += 1 if str.chr == "s"
+        loc[0] += 1 if str.chr == "d"
+        world.dude.offer_item world.dude.floor.entity_at(*loc)
+      end
+      talk = false
+    else
+      world.dude.move(y: -1) if str.chr == "w"
+      world.dude.move(x: -1) if str.chr == "a"
+      world.dude.move(y: 1) if str.chr == "s"
+      world.dude.move(x: 1) if str.chr == "d"
+      world.dude.vis.remember_all if str.chr == "o"
+      world.dude.vis.forget_all if str.chr == "p"
+      world.pick_up if str.chr == ","
+      world.dude.drop_item if str.chr == "."
+      world.take_stairs world.dude, UP if str.chr == "<"
+      world.take_stairs world.dude, DOWN if str.chr == ">"
+      world.add_item Item.new(*world.dude.location, ItemData::TORCH) if str.chr == "l"
+      talk = true if str.chr == "t"
+    end
     world.tick
   end
   world.tear_down
