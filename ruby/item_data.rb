@@ -6,7 +6,7 @@ require './item_properties'
 # If a variable is mapped to nil it MUST be overwritten. If the default value
 # is meant to be nil, simply omit it from the hash.
 module ItemData
-  DEFAULT = {name: 'unnamed item', symb: '?', luminescence: 0,
+  DEFAULT = {name: 'unnamed item', symb: '?', luminescence: 0, weight: 0,
     properties: Set.new.freeze}
   TORCH = {name: 'torch', symb: '(', color: 33, luminescence: 5,
     properties: [P::HOT, P::WIELDABLE, P::WOODEN].to_set.freeze}

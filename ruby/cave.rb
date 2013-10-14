@@ -13,7 +13,7 @@ module CaveLib
     attr_reader :height
     attr_reader :raw_map
     def initialize strat
-      @height = 21
+      @height = 22
       @width = 79
       gen_map *strat
     end

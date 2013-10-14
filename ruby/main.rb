@@ -4,7 +4,7 @@ require './cave'
 require './item_data'
 require './constants'
 
-def color text, color=nil
+def bash_color text, color=nil
   return text.to_s if color.nil?
   s = "\033["
   s << color.to_s << "m" << text.to_s << "\033[0m"
@@ -13,20 +13,47 @@ end
 
 
 class Inventory
+  attr_reader :wielded_index
   def initialize
     @weight = 0
     @items = []
+    @wielded_index = 0
+    @max_size = 10
+  end
+
+  def wielded
+    @items[@wielded_index]
   end
 
   def add_item item
     @weight += item.weight
-    @items << item
+    index = @items.index nil
+    if index.nil?  # no empty slots
+      if @items.size < @max_size
+        @items << item
+      end
+    else
+      @items[index] = item
+    end
+    self
   end
 
   def remove_item item
-    deleted = @items.delete item
-    @weight -= item.weight unless deleted.nil?
-    deleted
+    index = @items.index item
+    unless index.nil?
+      @items[index] = nil
+      @weight -= item.weight
+      return item
+    end
+    nil
+  end
+
+  def hotbar
+    @items.first(10) + [nil] * (10 - @items.size)
+  end
+
+  def wielded_index= index
+    @wielded_index = (index - 1) % 10
   end
 end
 
@@ -43,6 +70,7 @@ class Item
   attr_reader :name
   attr_reader :color
   attr_reader :luminescence
+  attr_reader :weight
   def initialize x, y, floor, item_data, extra_data={}
     @floor = floor
     @default = self.class.default.merge item_data.merge extra_data  # Take values from extra, then data, then default
@@ -90,6 +118,10 @@ class Item
     @properties.include? symb
   end
 
+  def glyph
+    bash_color(@symb, @color)
+  end
+
   def to_s
     name
   end
@@ -102,8 +134,8 @@ class Entity < Item
   @default = EntityData::DEFAULT
   attr_reader :vis
   attr_reader :nightvision
-  attr_reader :equipment
   attr_reader :wants
+  attr_reader :inv
   def initialize x, y, floor, entity_data, extra_data={}
     super x, y, floor, entity_data, extra_data
     @vis = Optics::Vision.new floor
@@ -125,32 +157,33 @@ class Entity < Item
   end
 
   def drop_item
-    unless @equipment.nil?
-      @equipment.move_to @x, @y, @floor
-      @floor.add_item @equipment
-      @equipment = nil
-      self.luminescence = @default[:luminescence]  # TODO: still not right, might be more factors affecting you
+    item = @inv.wielded
+    unless item.nil?
+      @inv.remove_item item
+      item.move_to @x, @y, @floor
+      @floor.add_item item
+      refresh_wielded_properties
     end
   end
 
   def offer_item receiver
     # TODO: don't use $world, make a singleton or SOMETHING.
     return nil if distance_to(receiver) > 1 || receiver.floor != self.floor
-    if receiver.wants.match? @equipment
-      $world.queue_msg "\"Thanks! This #{@equipment} is just what I needed.\""
-    elsif @equipment.nil?
+    wielded = @inv.wielded
+    if wielded.nil?
       $world.queue_msg '"Hey, can you get me something made of iron that is not a weapon?"'
+    elsif receiver.wants.match? wielded
+      $world.queue_msg "\"Thanks! This #{wielded} is just what I needed.\""
     else
-      $world.queue_msg "\"No thanks, I'm not looking for that #{@equipment}\""
+      $world.queue_msg "\"No thanks, I'm not looking for that #{wielded}\""
     end
   end
 
   # Take an item, drop the one you had.
   # Don't give nil to drop an item, use drop_item instead
   def give_item item
-    drop_item
-    @equipment = item
-    self.luminescence = item.luminescence
+    @inv.add_item item
+    refresh_wielded_properties
   end
 
   # Move by :x in the x direction and :y in the y direction
@@ -163,6 +196,24 @@ class Entity < Item
     end
     false
   end
+
+  def wielded
+    @inv.wielded
+  end
+
+  def wielded_index= index
+    @inv.wielded_index = index
+    refresh_wielded_properties
+  end
+
+  def refresh_wielded_properties
+    # TODO: still not right, might be more factors affecting you
+    self.luminescence = self.wielded.nil? ?
+      @default[:luminescence] :
+      self.wielded.luminescence
+  end
+
+  private :refresh_wielded_properties
 end
 
 
@@ -459,21 +510,22 @@ class GameView
           if dude.vis.visible? x, y  # I see it right now
             symb, clr = ((floor.symb_at x, y) || [symb, 93])  # get the entity or item
             if floor.lights?(x, y)  # lit up
-              toS << color(symb, clr)
+              toS << bash_color(symb, clr)
             else  # nightvison
-              toS << color(symb, 90)
+              toS << bash_color(symb, 90)
             end
           else
-            toS << color(symb, 30)  # memory
+            toS << bash_color(symb, 30)  # memory
           end
         else
-          toS << color(" ", 30)  # yet unseen
+          toS << bash_color(" ", 30)  # yet unseen
         end
       end
       toS << "\n"
     end
-    10.times do |n|
-      toS << "[     #{n.to_s[-1]}]"
+    dude.inv.hotbar.each_with_index do |n, i|
+      g = (n.nil? ? ' ' : n.glyph)
+      toS << bash_color("[  #{g}  #{(i + 1).to_s[-1]}]", (i == dude.inv.wielded_index ? 100 : nil))
     end
     toS
   end
@@ -487,7 +539,7 @@ if __FILE__ == $0
   talk = false
 
   while str.chr != "\u0003"
-    puts GameView.view world
+    print GameView.view world
     begin
       system("stty raw -echo")
       str = STDIN.getc
@@ -517,6 +569,7 @@ if __FILE__ == $0
       world.take_stairs world.dude, DOWN if str.chr == ">"
       world.add_item Item.new(*world.dude.location, ItemData::TORCH) if str.chr == "l"
       talk = true if str.chr == "t"
+      world.dude.wielded_index = str.chr.to_i if str.chr =~ /[0-9]/
     end
     world.tick
   end
